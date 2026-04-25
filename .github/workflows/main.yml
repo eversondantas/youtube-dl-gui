@@ -1,0 +1,39 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Rust 1.94.1
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows exe
+        run: npx tauri build --no-bundle
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-video-downloader-windows-exe
+          path: src-tauri/target/release/open-video-downloader.exe
