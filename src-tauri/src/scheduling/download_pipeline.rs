@@ -61,6 +61,19 @@ impl DispatchEntry for DownloadEntry {
         "playlist_autonumber".to_string(),
         group_autonumber.to_string(),
       );
+
+      let missing_playlist_index = self
+        .template_context
+        .values
+        .get("playlist_index")
+        .map_or(true, |value| value.trim().parse::<u64>().is_err());
+
+      if missing_playlist_index {
+        self.template_context.values.insert(
+          "playlist_index".to_string(),
+          group_autonumber.saturating_sub(1).to_string(),
+        );
+      }
     }
   }
 }
@@ -124,4 +137,85 @@ fn should_report_to_sentry(err: &YtdlpDownloadError) -> bool {
       | YtdlpDownloadError::InvalidDiagnosticRules(_)
       | YtdlpDownloadError::EventStreamEnded
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::models::TrackType;
+
+  fn make_entry(values: &[(&str, &str)]) -> DownloadEntry {
+    DownloadEntry {
+      group_id: "group".into(),
+      id: "id".into(),
+      url: "https://example.com/video".into(),
+      format: FormatOptions {
+        track_type: TrackType::Both,
+        abr: None,
+        height: None,
+        fps: None,
+        audio_encoding: None,
+        video_encoding: None,
+        audio_track: None,
+        video_track: None,
+      },
+      overrides: None,
+      template_context: TemplateContext {
+        values: values
+          .iter()
+          .map(|(key, value)| (key.to_string(), value.to_string()))
+          .collect(),
+      },
+    }
+  }
+
+  #[test]
+  fn set_numbering_keeps_existing_playlist_index() {
+    let mut entry = make_entry(&[("playlist_index", "7")]);
+
+    entry.set_numbering(12, Some(3));
+
+    assert_eq!(
+      entry.template_context.values.get("playlist_index").unwrap(),
+      "7"
+    );
+    assert_eq!(
+      entry
+        .template_context
+        .values
+        .get("playlist_autonumber")
+        .unwrap(),
+      "3"
+    );
+  }
+
+  #[test]
+  fn set_numbering_derives_missing_playlist_index_from_group_autonumber() {
+    let mut entry = make_entry(&[]);
+
+    entry.set_numbering(12, Some(3));
+
+    assert_eq!(
+      entry.template_context.values.get("playlist_index").unwrap(),
+      "2"
+    );
+    assert_eq!(
+      entry
+        .template_context
+        .render_template("%(playlist_index+1)02d-%(title)s"),
+      "03-%(title)s"
+    );
+  }
+
+  #[test]
+  fn set_numbering_derives_invalid_playlist_index_from_group_autonumber() {
+    let mut entry = make_entry(&[("playlist_index", "None")]);
+
+    entry.set_numbering(12, Some(3));
+
+    assert_eq!(
+      entry.template_context.values.get("playlist_index").unwrap(),
+      "2"
+    );
+  }
 }
